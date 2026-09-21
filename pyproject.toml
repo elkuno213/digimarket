@@ -1,0 +1,39 @@
+[project]
+name = "digimarket"
+version = "0.1.0"
+description = "DigiMarket REST API foundation"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1,<4",
+    "flask-jwt-extended>=4.7,<5",
+    "flask-sqlalchemy>=3.1,<4",
+    "python-dotenv>=1.2.3",
+]
+
+[dependency-groups]
+# Development-only tools stay separate from the runtime dependency set.
+dev = [
+    "mypy>=1.15,<2",
+    "pytest>=8.3,<9",
+    "ruff>=0.11,<1",
+]
+
+[tool.pytest.ini_options]
+# Tests import the project from this directory and live under tests/.
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+# Keep linting and formatting aligned with the supported Python version.
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Enable pycodestyle errors, Pyflakes, import sorting, and modern Python rules.
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+# Strict type checking is configured for the application package.
+python_version = "3.11"
+strict = true
+files = ["app"]

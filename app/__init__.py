@@ -1,18 +1,15 @@
-"""Flask application factory and extension instances."""
+"""Flask application factory for DigiMarket."""
 
 from collections.abc import Mapping
 from dataclasses import asdict
 from typing import Any
 
-from flask import Flask
-from flask_jwt_extended import JWTManager
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, Response, jsonify
+from werkzeug.exceptions import HTTPException
 
+from app import extensions
+from app.auth.routes import auth_blueprint
 from app.config import Config
-
-# Extensions are constructed once but bound only by the factory, avoiding global Flask app state.
-db = SQLAlchemy()
-jwt = JWTManager()
 
 
 def create_app(config_override: Mapping[str, Any] | None = None) -> Flask:
@@ -26,14 +23,39 @@ def create_app(config_override: Mapping[str, Any] | None = None) -> Flask:
     """
     app = Flask(__name__)
 
-    # Base configuration remains owned by Config so environment defaults stay centralized.
+    # Load the application's settings from the environment, then apply any test overrides.
     app.config.from_mapping(asdict(Config.from_environment()))
-    # Test overrides affect this returned application without changing environment-derived defaults.
     if config_override is not None:
         app.config.from_mapping(config_override)
 
-    # Bind extensions only after the application's settings have been finalized.
-    db.init_app(app)
-    jwt.init_app(app)
+    # Register extensions, blueprints, and error handlers after the app has loaded its settings.
+    register_extensions(app)
+    register_blueprints(app)
+    register_error_handlers(app)
 
     return app
+
+
+def register_extensions(app: Flask) -> None:
+    """Bind unbound extension objects after the application has loaded its settings."""
+    extensions.db.init_app(app)
+    extensions.jwt.init_app(app)
+
+
+def register_blueprints(app: Flask) -> None:
+    """Attach every feature's recorded routes to the application."""
+    app.register_blueprint(auth_blueprint, url_prefix="/api/auth")
+
+
+def register_error_handlers(app: Flask) -> None:
+    """Register the API-wide JSON error response handlers."""
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(error: HTTPException) -> tuple[Response, int]:
+        """Return a JSON response for Flask HTTP errors."""
+        return jsonify({"error": error.description}), error.code or 500
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_exception(_: Exception) -> tuple[Response, int]:
+        """Return a non-leaking JSON response for unexpected errors."""
+        return jsonify({"error": "Internal server error."}), 500

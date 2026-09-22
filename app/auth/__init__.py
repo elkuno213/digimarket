@@ -1,0 +1,1 @@
+"""Authentication registration package."""

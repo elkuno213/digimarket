@@ -37,3 +37,8 @@ select = ["E", "F", "I", "UP"]
 python_version = "3.11"
 strict = true
 files = ["app"]
+# SQLAlchemy creates ORM constructors dynamically, beyond mypy's static signature knowledge.
+disable_error_code = ["call-arg"]
+
+[tool.ty.rules]
+unknown-argument = "ignore"

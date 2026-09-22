@@ -1,6 +1,7 @@
 """Tests for application configuration defaults and environment overrides."""
 
 import pytest
+from conftest import TEST_JWT_SECRET
 from pytest import MonkeyPatch
 
 from app.config import Config
@@ -20,7 +21,7 @@ def test_environment_config_rejects_missing_or_empty_required_settings(
 ) -> None:
     """Configuration rejects absent and empty values for both required settings."""
     monkeypatch.setenv("DATABASE_PATH", "/tmp/digimarket-test.db")
-    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret")
+    monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     if invalid_value is None:
         monkeypatch.delenv(setting_name)
     else:
@@ -33,7 +34,7 @@ def test_environment_config_rejects_missing_or_empty_required_settings(
 def test_environment_path_and_jwt_configure_the_application(monkeypatch: MonkeyPatch) -> None:
     """Explicit path and JWT values configure their matching settings."""
     database_path = "/tmp/digimarket-test.db"
-    jwt_secret = "test-jwt-secret"
+    jwt_secret = TEST_JWT_SECRET
     monkeypatch.setenv("DATABASE_PATH", database_path)
     monkeypatch.setenv("JWT_SECRET_KEY", jwt_secret)
 

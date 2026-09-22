@@ -4,11 +4,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from math import isfinite
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from app.extensions import db
 from app.models.product import Product
 
+_MIN_SQLITE_INTEGER = -(2**63)
 _MAX_SQLITE_INTEGER = 2**63 - 1
 
 
@@ -66,11 +67,16 @@ def list_products(query: str | None) -> list[Product]:
     search = query.strip() if query is not None else ""
     if search:
         # autoescape makes percent and underscore search characters literals.
+        casefolded_search = search.casefold()
         statement = statement.where(
             or_(
-                Product.nom.icontains(search, autoescape=True),
-                Product.description.icontains(search, autoescape=True),
-                Product.categorie.icontains(search, autoescape=True),
+                func.unicode_casefold(Product.nom).contains(casefolded_search, autoescape=True),
+                func.unicode_casefold(Product.description).contains(
+                    casefolded_search, autoescape=True
+                ),
+                func.unicode_casefold(Product.categorie).contains(
+                    casefolded_search, autoescape=True
+                ),
             )
         )
     return list(db.session.execute(statement).scalars())
@@ -78,7 +84,7 @@ def list_products(query: str | None) -> list[Product]:
 
 def get_product(product_id: int) -> Product:
     """Return a product by identifier or raise the domain error."""
-    if product_id > _MAX_SQLITE_INTEGER:
+    if not _MIN_SQLITE_INTEGER <= product_id <= _MAX_SQLITE_INTEGER:
         raise ProductNotFoundError("Product not found.")
     product = db.session.get(Product, product_id)
     if product is None:

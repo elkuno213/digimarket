@@ -1,13 +1,17 @@
 """Tests for public product catalogue routes."""
 
 from collections.abc import Mapping
+from datetime import timedelta
 
 import pytest
+from flask import Flask
 from flask.testing import FlaskClient
+from flask_jwt_extended import create_access_token
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models.product import Product
+from app.models.user import User
 
 PRODUCT_PAYLOAD: dict[str, object] = {
     "nom": "Keyboard",
@@ -90,9 +94,21 @@ def test_catalogue_returns_product_detail_or_not_found_error(client: FlaskClient
     ids=["create", "replace", "delete"],
 )
 def test_product_writes_require_administrator(
-    client: FlaskClient, client_headers: dict[str, str], method: str, path: str
+    app: Flask,
+    client: FlaskClient,
+    client_headers: dict[str, str],
+    admin_user: User,
+    method: str,
+    path: str,
 ) -> None:
-    """Reject missing, malformed, and regular-client credentials for every product write."""
+    """Reject invalid and non-administrator credentials for every product write."""
+    with app.app_context():
+        expired_token = create_access_token(
+            identity=str(admin_user.id),
+            additional_claims={"role": admin_user.role},
+            expires_delta=timedelta(seconds=-1),
+        )
+
     missing_token_response = client.open(path, method=method, json=PRODUCT_PAYLOAD)
     malformed_token_response = client.open(
         path,
@@ -106,6 +122,12 @@ def test_product_writes_require_administrator(
         json=PRODUCT_PAYLOAD,
         headers=client_headers,
     )
+    expired_token_response = client.open(
+        path,
+        method=method,
+        json=PRODUCT_PAYLOAD,
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
 
     assert missing_token_response.status_code == 401
     assert isinstance(missing_token_response.get_json()["error"], str)
@@ -113,6 +135,8 @@ def test_product_writes_require_administrator(
     assert isinstance(malformed_token_response.get_json()["error"], str)
     assert client_response.status_code == 403
     assert client_response.get_json() == {"error": "Administrator access is required."}
+    assert expired_token_response.status_code == 401
+    assert expired_token_response.get_json() == {"error": "Token has expired."}
 
 
 @pytest.mark.parametrize(
@@ -174,6 +198,34 @@ def test_administrator_can_create_replace_and_delete_product(
     assert delete_response.status_code == 200
     assert delete_response.get_json() == {"message": "Product deleted."}
     assert db.session.get(Product, product_id) is None
+
+
+def test_administrator_cannot_partially_replace_an_existing_product(
+    client: FlaskClient, admin_headers: dict[str, str]
+) -> None:
+    """Reject an incomplete PUT without changing the persisted product."""
+    create_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=admin_headers)
+    created = create_response.get_json()
+    assert create_response.status_code == 201
+    assert isinstance(created, Mapping)
+    product_id = created["id"]
+    assert isinstance(product_id, int)
+
+    incomplete_payload = {
+        key: value for key, value in PRODUCT_PAYLOAD.items() if key != "categorie"
+    }
+    update_response = client.put(
+        f"/api/produits/{product_id}",
+        json=incomplete_payload,
+        headers=admin_headers,
+    )
+    db.session.expire_all()
+    persisted_product = db.session.get(Product, product_id)
+
+    assert update_response.status_code == 400
+    assert isinstance(update_response.get_json()["error"], str)
+    assert persisted_product is not None
+    assert persisted_product.to_dict() == created
 
 
 def test_administrator_writes_report_unknown_product_ids(

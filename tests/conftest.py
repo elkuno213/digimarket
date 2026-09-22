@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient
+from flask_jwt_extended import create_access_token
 from werkzeug.security import generate_password_hash
 
 from app import create_app
@@ -57,3 +58,40 @@ def admin_user(app: Flask) -> User:
     db.session.add(user)
     db.session.commit()
     return user
+
+
+@pytest.fixture
+def client_user(app: Flask) -> User:
+    """Provide a persisted regular client with a known test password."""
+    user = User(
+        email="client@example.com",
+        password_hash=generate_password_hash("correct-password"),
+        nom="Client",
+        role="client",
+        date_creation=datetime.now(UTC),
+    )
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+@pytest.fixture
+def admin_headers(app: Flask, admin_user: User) -> dict[str, str]:
+    """Provide authorization headers for the persisted administrator."""
+    with app.app_context():
+        token = create_access_token(
+            identity=str(admin_user.id),
+            additional_claims={"role": admin_user.role},
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def client_headers(app: Flask, client_user: User) -> dict[str, str]:
+    """Provide authorization headers for the persisted regular client."""
+    with app.app_context():
+        token = create_access_token(
+            identity=str(client_user.id),
+            additional_claims={"role": client_user.role},
+        )
+    return {"Authorization": f"Bearer {token}"}

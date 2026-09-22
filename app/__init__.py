@@ -8,6 +8,7 @@ from flask import Flask, Response, jsonify
 from werkzeug.exceptions import HTTPException
 
 from app import extensions
+from app.auth.authorization import register_jwt_error_handlers
 from app.auth.routes import auth_blueprint
 from app.config import Config
 from app.products.routes import products_blueprint
@@ -41,6 +42,7 @@ def register_extensions(app: Flask) -> None:
     """Bind unbound extension objects after the application has loaded its settings."""
     extensions.db.init_app(app)
     extensions.jwt.init_app(app)
+    register_jwt_error_handlers()
 
 
 def register_blueprints(app: Flask) -> None:

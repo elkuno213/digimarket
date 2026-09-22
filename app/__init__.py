@@ -10,6 +10,7 @@ from werkzeug.exceptions import HTTPException
 from app import extensions
 from app.auth.routes import auth_blueprint
 from app.config import Config
+from app.products.routes import products_blueprint
 
 
 def create_app(config_override: Mapping[str, Any] | None = None) -> Flask:
@@ -45,6 +46,7 @@ def register_extensions(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Attach every feature's recorded routes to the application."""
     app.register_blueprint(auth_blueprint, url_prefix="/api/auth")
+    app.register_blueprint(products_blueprint, url_prefix="/api/produits")
 
 
 def register_error_handlers(app: Flask) -> None:

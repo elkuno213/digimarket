@@ -78,6 +78,8 @@ def list_products(query: str | None) -> list[Product]:
 
 def get_product(product_id: int) -> Product:
     """Return a product by identifier or raise the domain error."""
+    if product_id > _MAX_SQLITE_INTEGER:
+        raise ProductNotFoundError("Product not found.")
     product = db.session.get(Product, product_id)
     if product is None:
         raise ProductNotFoundError("Product not found.")

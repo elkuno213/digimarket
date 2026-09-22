@@ -17,10 +17,12 @@ L’application s’appuie sur quatre entités principales :
 | --- | --- | --- |
 | id | Integer | Clé primaire |
 | email | String | Email unique de l’utilisateur |
-| mot_de_passe | String | Mot de passe haché |
+| password_hash | String | Mot de passe haché stocké |
 | nom | String | Nom de l’utilisateur |
 | role | String | Rôle: `client` ou `admin` |
 | date_creation | DateTime | Date de création du compte |
+
+L’API reçoit `mot_de_passe` en entrée et le hache avant de stocker le résultat dans `password_hash`.
 
 ## Produit
 

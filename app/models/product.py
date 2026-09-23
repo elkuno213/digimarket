@@ -20,7 +20,6 @@ class Product(Model):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nom: Mapped[str] = mapped_column(String(100), nullable=False)
-    # Legacy nullability is preserved; M2 writes must still provide non-null values.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     categorie: Mapped[str] = mapped_column(String(50), nullable=False)
     prix: Mapped[float] = mapped_column(Float, nullable=False)

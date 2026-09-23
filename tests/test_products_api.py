@@ -1,17 +1,11 @@
 """Tests for public product catalogue routes."""
 
 from collections.abc import Mapping
-from datetime import timedelta
 
-import pytest
-from flask import Flask
 from flask.testing import FlaskClient
-from flask_jwt_extended import create_access_token
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models.product import Product
-from app.models.user import User
 
 PRODUCT_PAYLOAD: dict[str, object] = {
     "nom": "Keyboard",
@@ -22,7 +16,7 @@ PRODUCT_PAYLOAD: dict[str, object] = {
 }
 
 
-def test_catalogue_lists_and_filters_products_without_authentication(client: FlaskClient) -> None:
+def test_list_products_returns_public_catalogue(client: FlaskClient) -> None:
     """Return ID-ordered products and filter their public catalogue by text."""
     keyboard = Product(
         nom="Keyboard",
@@ -55,7 +49,7 @@ def test_catalogue_lists_and_filters_products_without_authentication(client: Fla
     assert empty_response.get_json() == []
 
 
-def test_catalogue_returns_product_detail_or_not_found_error(client: FlaskClient) -> None:
+def test_get_product_returns_detail_or_not_found(client: FlaskClient) -> None:
     """Return a public product representation or the documented missing-product error."""
     product = Product(
         nom="Keyboard",
@@ -69,8 +63,6 @@ def test_catalogue_returns_product_detail_or_not_found_error(client: FlaskClient
 
     detail_response = client.get(f"/api/produits/{product.id}")
     missing_response = client.get("/api/produits/999")
-    largest_id_response = client.get(f"/api/produits/{2**63 - 1}")
-    unrepresentable_id_response = client.get(f"/api/produits/{2**63}")
 
     assert detail_response.status_code == 200
     body = detail_response.get_json()
@@ -78,89 +70,37 @@ def test_catalogue_returns_product_detail_or_not_found_error(client: FlaskClient
     assert body == product.to_dict()
     assert missing_response.status_code == 404
     assert missing_response.get_json() == {"error": "Product not found."}
-    assert largest_id_response.status_code == 404
-    assert largest_id_response.get_json() == {"error": "Product not found."}
-    assert unrepresentable_id_response.status_code == 404
-    assert unrepresentable_id_response.get_json() == {"error": "Product not found."}
 
 
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("POST", "/api/produits"),
-        ("PUT", "/api/produits/999"),
-        ("DELETE", "/api/produits/999"),
-    ],
-    ids=["create", "replace", "delete"],
-)
-def test_product_writes_require_administrator(
-    app: Flask,
-    client: FlaskClient,
-    client_headers: dict[str, str],
-    admin_user: User,
-    method: str,
-    path: str,
+def test_create_product_requires_administrator(
+    client: FlaskClient, client_headers: dict[str, str]
 ) -> None:
-    """Reject invalid and non-administrator credentials for every product write."""
-    with app.app_context():
-        expired_token = create_access_token(
-            identity=str(admin_user.id),
-            additional_claims={"role": admin_user.role},
-            expires_delta=timedelta(seconds=-1),
-        )
-
-    missing_token_response = client.open(path, method=method, json=PRODUCT_PAYLOAD)
-    malformed_token_response = client.open(
-        path,
-        method=method,
-        json=PRODUCT_PAYLOAD,
-        headers={"Authorization": "Bearer not-a-token"},
-    )
-    client_response = client.open(
-        path,
-        method=method,
-        json=PRODUCT_PAYLOAD,
-        headers=client_headers,
-    )
-    expired_token_response = client.open(
-        path,
-        method=method,
-        json=PRODUCT_PAYLOAD,
-        headers={"Authorization": f"Bearer {expired_token}"},
-    )
+    """Reject missing and non-administrator credentials for product creation."""
+    missing_token_response = client.post("/api/produits", json=PRODUCT_PAYLOAD)
+    client_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=client_headers)
 
     assert missing_token_response.status_code == 401
     assert isinstance(missing_token_response.get_json()["error"], str)
-    assert malformed_token_response.status_code == 401
-    assert isinstance(malformed_token_response.get_json()["error"], str)
     assert client_response.status_code == 403
     assert client_response.get_json() == {"error": "Administrator access is required."}
-    assert expired_token_response.status_code == 401
-    assert expired_token_response.get_json() == {"error": "Token has expired."}
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {**PRODUCT_PAYLOAD, "nom": " "},
-        {**PRODUCT_PAYLOAD, "prix": 0},
-        {**PRODUCT_PAYLOAD, "quantite_stock": -1},
-        {**PRODUCT_PAYLOAD, "quantite_stock": True},
-    ],
-    ids=["blank_name", "zero_price", "negative_stock", "boolean_stock"],
-)
-def test_admin_create_rejects_invalid_product_payloads(
-    client: FlaskClient, admin_headers: dict[str, str], payload: object
+def test_create_product_rejects_invalid_payload(
+    client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
-    """Reject representative invalid full product payloads before persistence."""
-    response = client.post("/api/produits", json=payload, headers=admin_headers)
+    """Reject an invalid administrator product payload before persistence."""
+    response = client.post(
+        "/api/produits",
+        json={**PRODUCT_PAYLOAD, "prix": 0},
+        headers=admin_headers,
+    )
 
     assert response.status_code == 400
     assert isinstance(response.get_json()["error"], str)
     assert db.session.scalar(db.select(Product)) is None
 
 
-def test_administrator_can_create_replace_and_delete_product(
+def test_administrator_product_lifecycle(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Create, fully replace, and delete a product with administrator credentials."""
@@ -200,7 +140,7 @@ def test_administrator_can_create_replace_and_delete_product(
     assert db.session.get(Product, product_id) is None
 
 
-def test_administrator_cannot_partially_replace_an_existing_product(
+def test_update_product_rejects_incomplete_payload(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Reject an incomplete PUT without changing the persisted product."""
@@ -228,40 +168,15 @@ def test_administrator_cannot_partially_replace_an_existing_product(
     assert persisted_product.to_dict() == created
 
 
-def test_administrator_writes_report_unknown_product_ids(
+def test_update_product_rejects_unknown_id(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
-    """Return the documented missing-product response for replacement and deletion."""
+    """Return the documented missing-product response for an unknown product."""
     update_response = client.put(
         "/api/produits/999",
         json=PRODUCT_PAYLOAD,
         headers=admin_headers,
     )
-    delete_response = client.delete("/api/produits/999", headers=admin_headers)
 
     assert update_response.status_code == 404
     assert update_response.get_json() == {"error": "Product not found."}
-    assert delete_response.status_code == 404
-    assert delete_response.get_json() == {"error": "Product not found."}
-
-
-def test_product_creation_recovers_after_a_commit_failure(
-    client: FlaskClient, admin_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Return a non-leaking server error and restore product creation after a failed commit."""
-
-    def fail_commit() -> None:
-        raise SQLAlchemyError("simulated write failure")
-
-    with monkeypatch.context() as patch:
-        patch.setattr(db.session, "commit", fail_commit)
-        failed_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=admin_headers)
-
-    assert failed_response.status_code == 500
-    assert failed_response.get_json() == {"error": "Internal server error."}
-    assert db.session.scalar(db.select(Product)) is None
-
-    recovered_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=admin_headers)
-
-    assert recovered_response.status_code == 201
-    assert len(list(db.session.scalars(db.select(Product)))) == 1

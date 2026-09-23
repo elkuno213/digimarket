@@ -55,11 +55,11 @@ def register_error_handlers(app: Flask) -> None:
     """Register the API-wide JSON error response handlers."""
 
     @app.errorhandler(HTTPException)
-    def handle_http_exception(error: HTTPException) -> tuple[Response, int]:
+    def on_http_exception(error: HTTPException) -> tuple[Response, int]:
         """Return a JSON response for Flask HTTP errors."""
         return jsonify({"error": error.description}), error.code or 500
 
     @app.errorhandler(Exception)
-    def handle_unexpected_exception(_: Exception) -> tuple[Response, int]:
+    def on_unexpected_exception(_: Exception) -> tuple[Response, int]:
         """Return a non-leaking JSON response for unexpected errors."""
         return jsonify({"error": "Internal server error."}), 500

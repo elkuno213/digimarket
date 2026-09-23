@@ -32,31 +32,22 @@ class ProductData:
     quantite_stock: int
 
 
-def validate_product_payload(payload: object) -> ProductData:
+def validate_product(payload: object) -> ProductData:
     """Validate a complete product create or replacement payload."""
     if not isinstance(payload, Mapping):
         raise ValidationError("Request body must be a JSON object.")
 
-    text_values = {
-        key: _validated_text(payload.get(key), key) for key in ("nom", "description", "categorie")
-    }
-    prix = payload.get("prix")
-    if isinstance(prix, bool) or not isinstance(prix, int | float):
-        raise ValidationError("prix must be a positive number.")
-    try:
-        prix_float = float(prix)
-    except OverflowError as error:
-        raise ValidationError("prix must be a positive number.") from error
-    if not isfinite(prix_float) or prix_float <= 0:
-        raise ValidationError("prix must be a positive number.")
-
+    nom = _validated_text(payload.get("nom"), "nom")
+    description = _validated_text(payload.get("description"), "description")
+    categorie = _validated_text(payload.get("categorie"), "categorie")
+    prix = _validated_price(payload.get("prix"))
     quantite_stock = _validated_stock(payload.get("quantite_stock"))
 
     return ProductData(
-        nom=text_values["nom"],
-        description=text_values["description"],
-        categorie=text_values["categorie"],
-        prix=prix_float,
+        nom=nom,
+        description=description,
+        categorie=categorie,
+        prix=prix,
         quantite_stock=quantite_stock,
     )
 
@@ -64,19 +55,14 @@ def validate_product_payload(payload: object) -> ProductData:
 def list_products(query: str | None) -> list[Product]:
     """Return products ordered by identifier, optionally filtered by text."""
     statement = db.select(Product).order_by(Product.id)
-    search = query.strip() if query is not None else ""
+    search = query.strip().casefold() if query is not None else ""
     if search:
         # autoescape makes percent and underscore search characters literals.
-        casefolded_search = search.casefold()
         statement = statement.where(
             or_(
-                func.unicode_casefold(Product.nom).contains(casefolded_search, autoescape=True),
-                func.unicode_casefold(Product.description).contains(
-                    casefolded_search, autoescape=True
-                ),
-                func.unicode_casefold(Product.categorie).contains(
-                    casefolded_search, autoescape=True
-                ),
+                func.unicode_casefold(Product.nom).contains(search, autoescape=True),
+                func.unicode_casefold(Product.description).contains(search, autoescape=True),
+                func.unicode_casefold(Product.categorie).contains(search, autoescape=True),
             )
         )
     return list(db.session.execute(statement).scalars())
@@ -94,29 +80,32 @@ def get_product(product_id: int) -> Product:
 
 def create_product(data: ProductData) -> Product:
     """Persist a product from validated editable values."""
-    quantite_stock = _validated_stock(data.quantite_stock)
     product = Product(
         nom=data.nom,
         description=data.description,
         categorie=data.categorie,
         prix=data.prix,
-        quantite_stock=quantite_stock,
+        quantite_stock=_validated_stock(data.quantite_stock),
     )
+
     db.session.add(product)
     _commit()
+
     return product
 
 
 def update_product(product_id: int, data: ProductData) -> Product:
     """Replace a product's editable values with validated data."""
     product = get_product(product_id)
-    quantite_stock = _validated_stock(data.quantite_stock)
+
     product.nom = data.nom
     product.description = data.description
     product.categorie = data.categorie
     product.prix = data.prix
-    product.quantite_stock = quantite_stock
+    product.quantite_stock = _validated_stock(data.quantite_stock)
+
     _commit()
+
     return product
 
 
@@ -130,10 +119,23 @@ def _validated_text(value: object, key: str) -> str:
     """Return a required nonblank text value."""
     if not isinstance(value, str):
         raise ValidationError(f"{key} must be a nonblank string.")
-    stripped_value = value.strip()
-    if not stripped_value:
+    stripped = value.strip()
+    if not stripped:
         raise ValidationError(f"{key} must be a nonblank string.")
-    return stripped_value
+    return stripped
+
+
+def _validated_price(value: object) -> float:
+    """Return a finite, strictly positive product price."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValidationError("prix must be a positive number.")
+    try:
+        prix = float(value)
+    except OverflowError as error:
+        raise ValidationError("prix must be a positive number.") from error
+    if not isfinite(prix) or prix <= 0:
+        raise ValidationError("prix must be a positive number.")
+    return prix
 
 
 def _validated_stock(value: object) -> int:

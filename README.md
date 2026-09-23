@@ -101,6 +101,19 @@ Invalid product input returns JSON `400`. Missing or malformed authentication re
 and a valid client token returns JSON `403`. A missing product returns JSON `404`. Successful
 deletion returns `200` with `{"message": "Product deleted."}`.
 
+### M2 implementation lessons
+
+- The `Product` model mirrors the supplied SQLite schema, where `description` and `quantite_stock`
+  may be null. The product API has a stricter rule: every create or `PUT` request must provide all
+  five editable fields. Mapping an existing database and validating new API input are separate jobs.
+- Product routes handle HTTP concerns only: read JSON, call a service, and return a status and JSON
+  response. `ProductData` carries validated values from the route to the service; the service owns
+  validation, search, and persistence.
+- `admin_required` calls `verify_jwt_in_request()` before reading the JWT `role` claim. Shared JWT
+  callbacks provide JSON `401` responses, while a valid non-admin token receives `403`.
+- `PUT` is deliberately a full replacement. A partial update is rejected; a future partial-update
+  feature would use `PATCH` with its own validation rules.
+
 With the server running, public catalogue requests need no token:
 
 ```bash
@@ -209,9 +222,11 @@ uv run mypy app
 uvx ty check app tests
 ```
 
-The combined suite exercises registration and login, normalized duplicate handling, generic failed
-credentials, public product browsing and search, complete administrator product writes, validation,
-authorization, missing-product behavior, and failed-commit recovery.
+The combined suite exercises factory/configuration behavior, database isolation, registration and
+login, normalized duplicate handling, product serialization, focused product-service rules, public
+catalogue browsing and search, administrator product writes, validation, authorization, and
+missing-product behavior. Product tests deliberately cover the M2 contract rather than every SQLite
+implementation boundary.
 
 When dependencies change, use `uv add <package>` for runtime dependencies, `uv add --dev <package>`
 for development dependencies, and `uv remove <package>` to remove one. These commands update

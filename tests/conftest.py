@@ -12,6 +12,7 @@ from werkzeug.security import generate_password_hash
 
 from app import create_app
 from app.extensions import db
+from app.models.product import Product
 from app.models.user import User
 
 TEST_JWT_SECRET = "test-jwt-secret-at-least-thirty-two-bytes-long"
@@ -73,6 +74,21 @@ def client_user(app: Flask) -> User:
     db.session.add(user)
     db.session.commit()
     return user
+
+
+@pytest.fixture
+def product(app: Flask) -> Product:
+    """Provide a persisted product with available stock."""
+    item = Product(
+        nom="Example Product",
+        description="A regular product",
+        categorie="Accessories",
+        prix=49.99,
+        quantite_stock=5,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return item
 
 
 @pytest.fixture

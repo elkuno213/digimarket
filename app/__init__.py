@@ -11,6 +11,7 @@ from app import extensions
 from app.auth.authorization import register_jwt_error_handlers
 from app.auth.routes import auth_blueprint
 from app.config import Config
+from app.orders.routes import orders_blueprint
 from app.products.routes import products_blueprint
 
 
@@ -48,6 +49,7 @@ def register_extensions(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     """Attach every feature's recorded routes to the application."""
     app.register_blueprint(auth_blueprint, url_prefix="/api/auth")
+    app.register_blueprint(orders_blueprint, url_prefix="/api/commandes")
     app.register_blueprint(products_blueprint, url_prefix="/api/produits")
 
 

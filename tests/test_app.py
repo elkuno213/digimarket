@@ -29,6 +29,7 @@ def test_factory_returns_app_with_module_extensions(
     assert isinstance(app, Flask)
     assert app.extensions["sqlalchemy"] is db
     assert app.extensions["flask-jwt-extended"] is jwt
+    assert "orders" in app.blueprints
 
 
 def test_factory_applies_configuration_override_to_returned_app(

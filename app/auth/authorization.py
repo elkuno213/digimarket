@@ -4,8 +4,8 @@ from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, TypeAlias
 
-from flask import Response, jsonify
-from flask_jwt_extended import get_jwt, verify_jwt_in_request
+from flask import Response, abort, jsonify
+from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 
 from app.extensions import jwt
 
@@ -37,6 +37,15 @@ def register_jwt_error_handlers() -> None:
         return _unauthorized_response("Token has expired.")
 
 
+def get_current_actor() -> tuple[int, str]:
+    """Read the actor from an already verified access token."""
+    id = get_jwt_identity()
+    role = get_jwt().get("role")
+    if not isinstance(id, str) or not id.isdecimal() or not isinstance(role, str):
+        abort(401, description="Token identity is invalid.")
+    return int(id), role
+
+
 def admin_required(view: Callable[P, RouteResponse]) -> Callable[P, RouteResponse]:
     """Require an access token whose role claim grants administrator access."""
 
@@ -44,7 +53,8 @@ def admin_required(view: Callable[P, RouteResponse]) -> Callable[P, RouteRespons
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> RouteResponse:
         """Authorize the request before invoking the protected view."""
         verify_jwt_in_request()
-        if get_jwt().get("role") != "admin":
+        _, role = get_current_actor()
+        if role != "admin":
             return jsonify({"error": "Administrator access is required."}), 403
         return view(*args, **kwargs)
 

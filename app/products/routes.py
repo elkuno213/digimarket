@@ -7,6 +7,7 @@ from flask import Blueprint, Response, jsonify, request
 from app.auth.authorization import admin_required
 from app.products.service import (
     ProductNotFoundError,
+    ProductReferencedByOrderError,
     ValidationError,
     create_product,
     delete_product,
@@ -75,5 +76,7 @@ def delete_product_route(product_id: int) -> tuple[Response, int] | Response:
         delete_product(product_id)
     except ProductNotFoundError as error:
         return jsonify({"error": str(error)}), 404
+    except ProductReferencedByOrderError as error:
+        return jsonify({"error": str(error)}), 409
 
     return jsonify({"message": "Product deleted."})

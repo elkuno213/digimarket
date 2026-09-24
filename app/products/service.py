@@ -7,6 +7,8 @@ from math import isfinite
 from sqlalchemy import func, or_
 
 from app.extensions import db
+from app.models.order import Order
+from app.models.order_item import OrderItem
 from app.models.product import Product
 
 _MIN_SQLITE_INTEGER = -(2**63)
@@ -19,6 +21,10 @@ class ValidationError(ValueError):
 
 class ProductNotFoundError(LookupError):
     """Raised when a requested product does not exist."""
+
+
+class ProductReferencedByOrderError(ValueError):
+    """Raised when an order line prevents product deletion."""
 
 
 @dataclass(frozen=True)
@@ -110,8 +116,48 @@ def update_product(product_id: int, data: ProductData) -> Product:
 
 
 def delete_product(product_id: int) -> None:
-    """Delete the product identified by product_id."""
-    db.session.delete(get_product(product_id))
+    """Delete a product and its pending orders unless protected history references it."""
+    product = get_product(product_id)
+    # Preserve every non-pending order and its lines as order history.
+    referenced_id = db.session.scalar(
+        db.select(OrderItem.id)
+        .join(Order, OrderItem.commande_id == Order.id)
+        .where(
+            OrderItem.produit_id == product.id,
+            or_(Order.statut != "en_attente", Order.statut.is_(None)),
+        )
+        .limit(1)
+    )
+    if referenced_id is not None:
+        raise ProductReferencedByOrderError("Product is referenced by non-pending order history.")
+
+    # Find pending orders containing this product; deleting one removes its complete order.
+    pending_orders = db.session.scalars(
+        db.select(Order)
+        .join(OrderItem, OrderItem.commande_id == Order.id)
+        .where(OrderItem.produit_id == product.id, Order.statut == "en_attente")
+        .distinct()
+    ).all()
+
+    # TODO(M4): Replace this destructive pending-order cleanup if a schema change becomes allowed.
+    # A product lifecycle policy could remove a product from future catalogue and order selection
+    # while retaining pending orders and all historical rows. Until then, hard deletion must remove
+    # complete pending orders and their lines so the required order_item.produit_id foreign key
+    # stays valid.
+    # Delete lines before their order headers because this relationship has no delete cascade.
+    for pending_order in pending_orders:
+        for line in pending_order.lignes:
+            db.session.delete(line)
+        db.session.delete(pending_order)
+
+    try:
+        # Send line and order deletions first, before scheduling the product deletion.
+        db.session.flush()
+        db.session.delete(product)
+    except Exception:
+        # A failed flush leaves the session unusable until its transaction is rolled back.
+        db.session.rollback()
+        raise
     _commit()
 
 

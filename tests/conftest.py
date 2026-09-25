@@ -21,6 +21,7 @@ TEST_JWT_SECRET = "test-jwt-secret-at-least-thirty-two-bytes-long"
 @pytest.fixture
 def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Flask]:
     """Provide an application backed by a temporary SQLite database."""
+    # Point required runtime settings at this test's isolated temporary database.
     database_path = tmp_path / "test.db"
     monkeypatch.setenv("DATABASE_PATH", str(database_path))
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
@@ -49,6 +50,7 @@ def client(app: Flask) -> FlaskClient:
 @pytest.fixture
 def admin_user(app: Flask) -> User:
     """Provide a persisted administrator with a known test password."""
+    # Create a reusable administrator record for authentication and access tests.
     user = User(
         email="admin@example.com",
         password_hash=generate_password_hash("correct-password"),
@@ -64,6 +66,7 @@ def admin_user(app: Flask) -> User:
 @pytest.fixture
 def client_user(app: Flask) -> User:
     """Provide a persisted regular client with a known test password."""
+    # Create a reusable client record for ownership and registration tests.
     user = User(
         email="client@example.com",
         password_hash=generate_password_hash("correct-password"),
@@ -79,6 +82,7 @@ def client_user(app: Flask) -> User:
 @pytest.fixture
 def product(app: Flask) -> Product:
     """Provide a persisted product with available stock."""
+    # Create a reusable catalogue record for product and order tests.
     item = Product(
         nom="Example Product",
         description="A regular product",
@@ -94,6 +98,7 @@ def product(app: Flask) -> Product:
 @pytest.fixture
 def admin_headers(app: Flask, admin_user: User) -> dict[str, str]:
     """Provide authorization headers for the persisted administrator."""
+    # Build the same signed claims used by protected administrator routes.
     with app.app_context():
         token = create_access_token(
             identity=str(admin_user.id),
@@ -105,6 +110,7 @@ def admin_headers(app: Flask, admin_user: User) -> dict[str, str]:
 @pytest.fixture
 def client_headers(app: Flask, client_user: User) -> dict[str, str]:
     """Provide authorization headers for the persisted regular client."""
+    # Build the same signed claims used by protected client routes.
     with app.app_context():
         token = create_access_token(
             identity=str(client_user.id),

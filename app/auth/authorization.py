@@ -21,6 +21,7 @@ def _unauthorized_response(message: str) -> tuple[Response, int]:
 def register_jwt_error_handlers() -> None:
     """Register JSON error callbacks on the shared JWT extension."""
 
+    # Convert JWT extension failures into the API's common JSON error shape.
     @jwt.unauthorized_loader
     def on_missing_token(reason: str) -> RouteResponse:
         """Return JSON for a request without a usable authorization header."""
@@ -39,6 +40,7 @@ def register_jwt_error_handlers() -> None:
 
 def get_current_actor() -> tuple[int, str]:
     """Read the actor from an already verified access token."""
+    # Read and validate the claims before application services use them for access checks.
     id = get_jwt_identity()
     role = get_jwt().get("role")
     if not isinstance(id, str) or not id.isdecimal() or not isinstance(role, str):
@@ -52,6 +54,7 @@ def admin_required(view: Callable[P, RouteResponse]) -> Callable[P, RouteRespons
     @wraps(view)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> RouteResponse:
         """Authorize the request before invoking the protected view."""
+        # Verify signature and expiry first, then enforce the role claim.
         verify_jwt_in_request()
         _, role = get_current_actor()
         if role != "admin":

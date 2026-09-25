@@ -19,6 +19,7 @@ class OrderItem(Model):
 
     __tablename__ = "order_item"
 
+    # Map each saved product, quantity, and price snapshot to its order header.
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     commande_id: Mapped[int] = mapped_column(ForeignKey("order.id"), nullable=False)
     produit_id: Mapped[int] = mapped_column(ForeignKey("product.id"), nullable=False)

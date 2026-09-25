@@ -18,6 +18,7 @@ class Product(Model):
 
     __tablename__ = "product"
 
+    # Map the supplied product fields, including nullable fields kept by the database schema.
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nom: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -32,12 +33,14 @@ class Product(Model):
 
     def to_dict(self) -> dict[str, int | float | str | None]:
         """Return the public product representation with UTC creation time."""
+        # SQLite reloads datetimes without timezone data, so normalize before serialization.
         date_creation = self.date_creation
         if date_creation.tzinfo is None:
             date_creation = date_creation.replace(tzinfo=UTC)
         else:
             date_creation = date_creation.astimezone(UTC)
 
+        # Return product fields in the API representation.
         return {
             "id": self.id,
             "nom": self.nom,

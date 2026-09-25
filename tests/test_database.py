@@ -41,6 +41,7 @@ def _create_app_for_database(
     read_only: bool = False,
 ) -> Flask:
     """Create a test application configured explicitly for one SQLite database."""
+    # Set factory-required environment values before optionally switching to read-only SQLite.
     monkeypatch.setenv("DATABASE_PATH", str(database_path))
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     database_uri = f"sqlite:///{database_path}"
@@ -64,6 +65,7 @@ def test_temporary_database_is_connected_independently(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """A temporary SQLite override connects outside tracked database fixtures."""
+    # Create an app for a fresh path, then prove its connection can execute SQL.
     database_path = tmp_path / "test.db"
     app = _create_app_for_database(monkeypatch, database_path)
 
@@ -77,12 +79,14 @@ def test_supplied_database_is_readable_empty_schema_without_file_changes(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """The tracked blank database supports read-only schema inspection."""
+    # Snapshot the supplied file before read-only schema and empty-table checks.
     database_path = _DATABASE_DIRECTORY / "digimarket.db"
     before_hash = sha256(database_path.read_bytes()).digest()
     sidecar_paths = _sidecar_paths(database_path)
     assert not any(path.exists() for path in sidecar_paths)
     app = _create_app_for_database(monkeypatch, database_path, read_only=True)
 
+    # Inspect tables without writing records or SQLite sidecar files.
     with app.app_context():
         inspector = inspect(db.engine)
         table_names = set(inspector.get_table_names())
@@ -96,6 +100,7 @@ def test_supplied_database_is_readable_empty_schema_without_file_changes(
         assert _count(Order) == 0
         assert _count(OrderItem) == 0
 
+    # Confirm expected schema and exact source bytes remain unchanged.
     assert set(_REQUIRED_TABLE_COLUMNS).issubset(table_names)
     assert table_columns == _REQUIRED_TABLE_COLUMNS
     assert sha256(database_path.read_bytes()).digest() == before_hash
@@ -106,12 +111,14 @@ def test_onboarding_a_copied_empty_schema_keeps_the_tracked_fixture_unchanged(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Onboarding writes only to a copied blank database, never the tracked schema."""
+    # Copy the empty schema, then direct onboarding at the disposable copy.
     source_path = _DATABASE_DIRECTORY / "digimarket.db"
     before_hash = sha256(source_path.read_bytes()).digest()
     database_path = tmp_path / "onboarded.db"
     copyfile(source_path, database_path)
     app = _create_app_for_database(monkeypatch, database_path)
 
+    # Create one administrator only in the copied database.
     with app.app_context():
         administrator = onboard_administrator("admin@example.test", "Demo Admin", "eight-char")
         admins = db.session.scalars(db.select(User).where(User.role == "admin")).all()
@@ -125,6 +132,7 @@ def test_onboarding_a_copied_empty_schema_keeps_the_tracked_fixture_unchanged(
 
 def test_application_registers_onboard_command(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     """The application registers the trusted onboarding command."""
+    # Factory registration must expose setup command without executing it.
     app = _create_app_for_database(monkeypatch, tmp_path / "test.db")
 
     assert "onboard" in app.cli.commands

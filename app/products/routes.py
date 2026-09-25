@@ -23,6 +23,7 @@ products_blueprint = Blueprint("products", __name__)
 @products_blueprint.get("")
 def list_products_route() -> Response:
     """Return the public catalogue without requiring authentication."""
+    # Pass optional query text to the service, then serialize its ordered results.
     products = list_products(request.args.get("q"))
     return jsonify([product.to_dict() for product in products])
 
@@ -31,8 +32,10 @@ def list_products_route() -> Response:
 def get_product_route(product_id: int) -> tuple[Response, int] | Response:
     """Return one public product without requiring authentication."""
     try:
+        # Let the service apply identifier bounds and database lookup rules.
         product = get_product(product_id)
     except ProductNotFoundError as error:
+        # Convert a missing model into the documented HTTP response.
         return jsonify({"error": str(error)}), 404
 
     return jsonify(product.to_dict())
@@ -42,10 +45,12 @@ def get_product_route(product_id: int) -> tuple[Response, int] | Response:
 @admin_required
 def create_product_route() -> tuple[Response, int]:
     """Create a product from a complete administrator request."""
+    # Treat decoded JSON as untrusted until service validation creates ProductData.
     payload = cast(object, request.get_json(silent=True))
     try:
         product_data = validate_product(payload)
     except ValidationError as error:
+        # Return validation failures without attempting a database write.
         return jsonify({"error": str(error)}), 400
 
     product = create_product(product_data)
@@ -56,6 +61,7 @@ def create_product_route() -> tuple[Response, int]:
 @admin_required
 def update_product_route(product_id: int) -> tuple[Response, int] | Response:
     """Fully replace one product from a complete administrator request."""
+    # Validate complete replacement data before looking up and changing the product.
     payload = cast(object, request.get_json(silent=True))
     try:
         product_data = validate_product(payload)
@@ -73,6 +79,7 @@ def update_product_route(product_id: int) -> tuple[Response, int] | Response:
 def delete_product_route(product_id: int) -> tuple[Response, int] | Response:
     """Delete one product after administrator authentication."""
     try:
+        # Let the service preserve protected order history before deleting anything.
         delete_product(product_id)
     except ProductNotFoundError as error:
         return jsonify({"error": str(error)}), 404

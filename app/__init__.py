@@ -43,6 +43,7 @@ def create_app(config_override: Mapping[str, Any] | None = None) -> Flask:
 
 def register_extensions(app: Flask) -> None:
     """Bind unbound extension objects after the application has loaded its settings."""
+    # Initialize shared extensions before routes or their JWT callbacks are used.
     extensions.db.init_app(app)
     extensions.jwt.init_app(app)
     register_jwt_error_handlers()
@@ -50,6 +51,7 @@ def register_extensions(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     """Attach every feature's recorded routes to the application."""
+    # Give each feature one stable API prefix while keeping its routes modular.
     app.register_blueprint(auth_blueprint, url_prefix="/api/auth")
     app.register_blueprint(orders_blueprint, url_prefix="/api/commandes")
     app.register_blueprint(products_blueprint, url_prefix="/api/produits")
@@ -57,6 +59,7 @@ def register_blueprints(app: Flask) -> None:
 
 def register_error_handlers(app: Flask) -> None:
     """Register the API-wide JSON error response handlers."""
+    # Keep framework and unexpected failures in the API's JSON response format.
 
     @app.errorhandler(HTTPException)
     def on_http_exception(error: HTTPException) -> tuple[Response, int]:

@@ -18,7 +18,7 @@ class User(Model):
 
     __tablename__ = "user"
 
-    # Define the columns for the User model corresponding to the database table
+    # Map the supplied user table; password_hash stays private and is never serialized.
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -32,13 +32,14 @@ class User(Model):
 
     def to_dict(self) -> dict[str, int | str]:
         """Return the public user representation with UTC creation time."""
-        # Convert date_creation to UTC if it is not already in UTC
+        # SQLite reloads datetimes without timezone data, so normalize before serialization.
         date_creation = self.date_creation
         if date_creation.tzinfo is None:
             date_creation = date_creation.replace(tzinfo=UTC)
         else:
             date_creation = date_creation.astimezone(UTC)
 
+        # Return only fields that are safe to expose in API responses.
         return {
             "id": self.id,
             "email": self.email,

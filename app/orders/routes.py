@@ -44,6 +44,7 @@ def on_order_service_error(
     | StatusTransitionError,
 ) -> tuple[Response, int]:
     """Map order service failures to JSON HTTP errors."""
+    # Convert domain exception families into their documented HTTP status codes.
     if isinstance(error, OrderValidationError):
         status = 400
     elif isinstance(error, OrderNotFoundError | OrderedProductNotFoundError):
@@ -56,6 +57,7 @@ def on_order_service_error(
 @orders_blueprint.get("")
 def list_orders_route() -> Response:
     """List orders visible to the authenticated actor."""
+    # Verify token first, then scope the service query by its actor and role.
     verify_jwt_in_request()
     actor_id, role = get_current_actor()
     return jsonify([order.to_dict() for order in list_orders(actor_id, role)])
@@ -64,6 +66,7 @@ def list_orders_route() -> Response:
 @orders_blueprint.get("/<int:order_id>")
 def get_order_route(order_id: int) -> Response:
     """Return one order visible to the authenticated actor."""
+    # Reuse the actor claim for the service's ownership check.
     verify_jwt_in_request()
     actor_id, role = get_current_actor()
     return jsonify(get_order(order_id, actor_id, role).to_dict())
@@ -72,6 +75,7 @@ def get_order_route(order_id: int) -> Response:
 @orders_blueprint.post("")
 def create_order_route() -> tuple[Response, int]:
     """Create a pending order for the authenticated actor."""
+    # Authenticate creator, validate untrusted JSON, then persist the trusted order data.
     verify_jwt_in_request()
     actor_id, _ = get_current_actor()
     payload = cast(object, request.get_json(silent=True))
@@ -82,6 +86,7 @@ def create_order_route() -> tuple[Response, int]:
 @admin_required
 def update_order_status_route(order_id: int) -> Response:
     """Apply an administrator's requested status transition."""
+    # admin_required verifies the token and role before validating the requested state.
     payload = cast(object, request.get_json(silent=True))
     return jsonify(update_order_status(order_id, validate_status(payload)).to_dict())
 
@@ -89,6 +94,7 @@ def update_order_status_route(order_id: int) -> Response:
 @orders_blueprint.get("/<int:order_id>/lignes")
 def get_order_lines_route(order_id: int) -> Response:
     """Return saved lines for one visible order."""
+    # Reuse the actor claim for the service's ownership check before returning lines.
     verify_jwt_in_request()
     actor_id, role = get_current_actor()
     return jsonify([line.to_dict() for line in get_order_lines(order_id, actor_id, role)])

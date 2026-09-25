@@ -81,6 +81,7 @@ def find_user_by_email(email: str) -> User | None:
     Returns:
         The matching user, if one exists.
     """
+    # Build a typed lookup, then return at most one unique-email record.
     statement = db.select(User).where(User.email == email)
     return db.session.scalars(statement).one_or_none()
 
@@ -97,6 +98,7 @@ def validate_registration(payload: object) -> RegistrationData:
     Raises:
         ValidationError: If the payload is not a valid registration object.
     """
+    # Confirm JSON object shape, then map API field names into shared account validation.
     payload_json = require_json(payload=payload)
     return validate_account(
         email=payload_json.get("email"),
@@ -107,10 +109,12 @@ def validate_registration(payload: object) -> RegistrationData:
 
 def validate_account(email: object, name: object, password: object) -> RegistrationData:
     """Validate and normalize the values needed to persist an account."""
+    # Normalize text first so validation and uniqueness use canonical values.
     normalized_email = _require_nonblank_str(email, "email").strip().lower()
     normalized_name = _require_nonblank_str(name, "nom").strip()
     validated_password = _require_nonblank_str(password, "mot_de_passe")
 
+    # Apply the rules shared by public registration and trusted onboarding.
     if EMAIL_PATTERN.fullmatch(normalized_email) is None:
         raise ValidationError("Email address is invalid.")
     if len(validated_password) < 8:
@@ -135,6 +139,7 @@ def register_user(registration: RegistrationData) -> User:
     Raises:
         DuplicateEmailError: If the normalized email is already registered.
     """
+    # Public registration always persists the least-privileged client role.
     return _persist_user(registration, role="client")
 
 
@@ -166,6 +171,7 @@ def _persist_user(registration: RegistrationData, role: str) -> User:
 
 def onboard_administrator(email: object, name: object, password: object) -> User:
     """Atomically create the first administrator from trusted local input."""
+    # Validate before opening a write transaction so invalid input changes nothing.
     registration = validate_account(email, name, password)
 
     try:
@@ -176,6 +182,7 @@ def onboard_administrator(email: object, name: object, password: object) -> User
             raise AdministratorAlreadyExistsError("An administrator already exists.")
         return _persist_user(registration, role="admin")
     except Exception:
+        # Roll back the explicit transaction before propagating every failure.
         db.session.rollback()
         raise
 
@@ -192,10 +199,12 @@ def validate_login(payload: object) -> LoginData:
     Raises:
         ValidationError: If the payload is not a valid login object.
     """
+    # Confirm JSON object shape, then normalize credentials used for account lookup.
     payload_json = require_json(payload=payload)
     email = require_str(payload_json, "email").strip().lower()
     password = require_str(payload=payload_json, key="mot_de_passe")
 
+    # Reject a malformed email before password verification begins.
     if EMAIL_PATTERN.fullmatch(email) is None:
         raise ValidationError("Email address is invalid.")
 
@@ -215,6 +224,7 @@ def login_user(payload: object) -> str:
         InvalidCredentialsError: If the credentials do not authenticate a user.
         ValidationError: If the payload is not a valid login object.
     """
+    # Validate input, then load the account using its normalized email.
     login = validate_login(payload=payload)
     user = find_user_by_email(email=login.email)
     password_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
@@ -223,6 +233,7 @@ def login_user(payload: object) -> str:
     if not check_password_hash(password_hash, login.password) or user is None:
         raise InvalidCredentialsError("Invalid email or password.")
 
+    # Put only stable identity and authorization data in the signed access token.
     return str(
         create_access_token(
             identity=str(user.id),

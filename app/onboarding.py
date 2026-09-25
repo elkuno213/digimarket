@@ -13,6 +13,7 @@ from app.auth.service import (
 
 def register_onboarding_command(app: Flask) -> None:
     """Register the explicit command that creates DigiMarket's first administrator."""
+    # Attach setup command during factory creation without running it at startup.
     app.cli.add_command(onboard_command)
 
 
@@ -23,6 +24,7 @@ def register_onboarding_command(app: Flask) -> None:
 def onboard_command(email: str, name: str, password: str) -> None:
     """Create the first administrator from trusted local command input."""
     try:
+        # Reuse service validation and atomic first-administrator protection.
         administrator = onboard_administrator(email, name, password)
     except (AdministratorAlreadyExistsError, DuplicateEmailError, ValidationError) as error:
         raise click.ClickException(str(error)) from error

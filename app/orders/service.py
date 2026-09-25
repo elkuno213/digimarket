@@ -93,6 +93,7 @@ def validate_order(payload: object) -> OrderData:
 
 def validate_status(payload: object) -> str:
     """Validate an order status payload."""
+    # Require exactly one known status field before any state transition is considered.
     if not isinstance(payload, Mapping) or payload.keys() != {"statut"}:
         raise OrderValidationError("Status must be a JSON object with statut.")
     status = payload["statut"]
@@ -147,6 +148,7 @@ def create_order(data: OrderData, utilisateur_id: int) -> Order:
 
 def get_order_lines(order_id: int, utilisateur_id: int, role: str) -> list[OrderItem]:
     """Return lines for an order visible to the caller."""
+    # Check header visibility first; only then query its saved line records.
     get_order(order_id, utilisateur_id, role)
     return list(
         db.session.execute(
@@ -157,6 +159,7 @@ def get_order_lines(order_id: int, utilisateur_id: int, role: str) -> list[Order
 
 def get_order(order_id: int, utilisateur_id: int, role: str) -> Order:
     """Return an order visible to the caller only if the caller is an admin or owns the order."""
+    # Load once, then allow administrators or the order owner.
     order = _load_order(order_id)
     if role != "admin" and order.utilisateur_id != utilisateur_id:
         raise OrderAccessError("Order access denied.")
@@ -165,6 +168,7 @@ def get_order(order_id: int, utilisateur_id: int, role: str) -> Order:
 
 def list_orders(utilisateur_id: int, role: str) -> list[Order]:
     """Return orders visible to the caller only if the caller is an admin or owns the orders."""
+    # Administrators see every header; clients receive only their own records.
     statement = db.select(Order).order_by(Order.id)
     if role != "admin":
         statement = statement.where(Order.utilisateur_id == utilisateur_id)
@@ -188,6 +192,7 @@ def update_order_status(order_id: int, statut: str) -> Order:
         InsufficientStockError: If stock is unavailable or cannot be safely restored.
         StatusTransitionError: If the current and requested states are not an allowed transition.
     """
+    # Load current state once, then choose one allowed transition path.
     order = _load_order(order_id)
     # Validate only after every order line can be supplied.
     if order.statut == "en_attente" and statut == "validée":
@@ -238,6 +243,7 @@ def update_order_status(order_id: int, statut: str) -> Order:
 
 def _load_order(order_id: int) -> Order:
     """Return an order whose identifier fits SQLite's signed integer range."""
+    # Reject non-representable identifiers before the database lookup.
     if not _MIN_SQLITE_INTEGER <= order_id <= _MAX_SQLITE_INTEGER:
         raise OrderNotFoundError("Order not found.")
     order = db.session.get(Order, order_id)
@@ -248,6 +254,7 @@ def _load_order(order_id: int) -> Order:
 
 def _lines_and_products(order_id: int) -> tuple[list[OrderItem], dict[int, Product]]:
     """Load order lines and their products in two queries."""
+    # Load lines first, then index only their referenced products for stock operations.
     lines = list(
         db.session.execute(db.select(OrderItem).where(OrderItem.commande_id == order_id)).scalars()
     )
@@ -263,6 +270,7 @@ def _lines_and_products(order_id: int) -> tuple[list[OrderItem], dict[int, Produ
 def _commit() -> None:
     """Commit changes and restore the session after failure."""
     try:
+        # Make staged order and stock changes durable as one transaction.
         db.session.commit()
     except Exception:
         # Roll back the failed transaction before the session is reused.

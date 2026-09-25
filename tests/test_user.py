@@ -12,7 +12,7 @@ def test_persisted_user_serializes_naive_sqlite_datetime_as_utc(app: Flask) -> N
     """Serialize a SQLite-reloaded user with an explicit UTC timestamp."""
     assert app.config["TESTING"] is True
 
-    # Create a user with a specific UTC timestamp
+    # Create a user with a specific UTC timestamp.
     user = User(
         email="member@example.com",
         password_hash="hashed-secret",
@@ -23,14 +23,14 @@ def test_persisted_user_serializes_naive_sqlite_datetime_as_utc(app: Flask) -> N
 
     assert user.to_dict()["date_creation"] == "2026-09-21T12:30:00+00:00"
 
-    # Save the user to the database
+    # Save the user, then clear session state before a SQLite reload.
     db.session.add(user)
     db.session.commit()
     user_id = user.id
     assert user_id > 0
     db.session.remove()
 
-    # Reload the user from the database and check if all attributes are correctly persisted
+    # Reload the user and check persisted public fields plus private-password exclusion.
     persisted_user = db.session.get(User, user_id)
 
     assert persisted_user is not None

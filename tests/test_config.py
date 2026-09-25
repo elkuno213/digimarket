@@ -20,6 +20,7 @@ def test_environment_config_rejects_missing_or_empty_required_settings(
     monkeypatch: MonkeyPatch, setting_name: str, invalid_value: str | None
 ) -> None:
     """Configuration rejects absent and empty values for both required settings."""
+    # Start valid, then remove or empty one required setting for each parameter.
     monkeypatch.setenv("DATABASE_PATH", "/tmp/digimarket-test.db")
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     if invalid_value is None:
@@ -27,12 +28,14 @@ def test_environment_config_rejects_missing_or_empty_required_settings(
     else:
         monkeypatch.setenv(setting_name, invalid_value)
 
+    # Configuration must fail before Flask receives incomplete runtime settings.
     with pytest.raises(RuntimeError, match=setting_name):
         Config.from_environment()
 
 
 def test_environment_path_and_jwt_configure_the_application(monkeypatch: MonkeyPatch) -> None:
     """Explicit path and JWT values configure their matching settings."""
+    # Set both required values, then build immutable configuration from the environment.
     database_path = "/tmp/digimarket-test.db"
     jwt_secret = TEST_JWT_SECRET
     monkeypatch.setenv("DATABASE_PATH", database_path)
@@ -40,5 +43,6 @@ def test_environment_path_and_jwt_configure_the_application(monkeypatch: MonkeyP
 
     config = Config.from_environment()
 
+    # Check path conversion and JWT pass-through independently.
     assert config.SQLALCHEMY_DATABASE_URI == f"sqlite:///{database_path}"
     assert config.JWT_SECRET_KEY == jwt_secret

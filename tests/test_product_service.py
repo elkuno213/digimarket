@@ -20,6 +20,7 @@ from app.products.service import (
 
 def test_validate_product_normalizes_payload() -> None:
     """Strip text values and convert a valid JSON price to a float."""
+    # Use padded text and an integer price to exercise normalization into ProductData.
     payload = {
         "nom": " Keyboard ",
         "description": " Mechanical ",
@@ -28,6 +29,7 @@ def test_validate_product_normalizes_payload() -> None:
         "quantite_stock": 3,
     }
 
+    # Compare the complete trusted data object returned to persistence callers.
     assert validate_product(payload) == ProductData(
         nom="Keyboard",
         description="Mechanical",
@@ -66,12 +68,14 @@ def test_validate_product_rejects_invalid_values(
     payload: dict[str, int | str], message: str
 ) -> None:
     """Reject non-positive prices and negative stock counts."""
+    # Each parameter reaches one numeric validation rule before persistence.
     with pytest.raises(ValidationError, match=message):
         validate_product(payload)
 
 
 def test_list_products_matches_catalogue_fields(app: Flask) -> None:
     """Return ordered matches from names, descriptions, and categories."""
+    # Persist distinct catalogue fields so each search path has one expected match.
     keyboard = Product(
         nom="Keyboard",
         description="Mechanical key switches",
@@ -96,6 +100,7 @@ def test_list_products_matches_catalogue_fields(app: Flask) -> None:
     db.session.add_all([keyboard, mouse, cable])
     db.session.commit()
 
+    # Check text search across name, description, and category in identifier order.
     assert list_products("key") == [keyboard]
     assert list_products("ergonomic") == [mouse]
     assert list_products("accessories") == [keyboard, cable]
@@ -103,6 +108,7 @@ def test_list_products_matches_catalogue_fields(app: Flask) -> None:
 
 def test_product_lifecycle(app: Flask) -> None:
     """Persist, replace, reload, and delete a product through the service."""
+    # Create once, clear session state, then retain its generated identifier for later steps.
     created = create_product(
         ProductData(
             nom="Keyboard",
@@ -119,6 +125,7 @@ def test_product_lifecycle(app: Flask) -> None:
     assert original_product is not None
     original_creation_date = original_product.date_creation
 
+    # Replace every editable field, then reload to verify persistence rather than memory state.
     update_product(
         product_id,
         ProductData(
@@ -142,6 +149,7 @@ def test_product_lifecycle(app: Flask) -> None:
         reloaded_product.date_creation,
     ) == ("Mouse", "Ergonomic", "Peripherals", 45.0, 4, original_creation_date)
 
+    # Delete the unreferenced product and verify its record is absent after reload.
     delete_product(product_id)
     db.session.remove()
 
@@ -150,5 +158,6 @@ def test_product_lifecycle(app: Flask) -> None:
 
 def test_get_product_rejects_unknown_id(app: Flask) -> None:
     """Raise the domain error when no product has the requested identifier."""
+    # Service callers receive a domain error instead of a nullable product.
     with pytest.raises(ProductNotFoundError, match="Product not found"):
         get_product(999)

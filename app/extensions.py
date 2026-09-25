@@ -16,6 +16,7 @@ def _unicode_casefold(value: str | None) -> str | None:
 @event.listens_for(Engine, "connect")
 def _register_sqlite_casefold_function(dbapi_connection: object, _: object) -> None:
     """Install the Unicode search function on each SQLite connection."""
+    # Register only for SQLite; another SQLAlchemy engine does not expose this API.
     if isinstance(dbapi_connection, sqlite3.Connection):
         dbapi_connection.create_function(
             "unicode_casefold",

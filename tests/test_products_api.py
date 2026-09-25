@@ -24,6 +24,7 @@ PRODUCT_PAYLOAD: dict[str, object] = {
 
 def test_list_products_returns_public_catalogue(client: FlaskClient) -> None:
     """Return ID-ordered products and filter their public catalogue by text."""
+    # Persist two products, then exercise unfiltered, matching, and empty public searches.
     keyboard = Product(
         nom="Keyboard",
         description="Mechanical keyboard",
@@ -45,6 +46,7 @@ def test_list_products_returns_public_catalogue(client: FlaskClient) -> None:
     matching_response = client.get("/api/produits?q=ERGONOMIC")
     empty_response = client.get("/api/produits?q=no-match")
 
+    # Check response shape, stable order, case-insensitive matching, and empty results.
     assert catalogue_response.status_code == 200
     catalogue = catalogue_response.get_json()
     assert isinstance(catalogue, list)
@@ -57,6 +59,7 @@ def test_list_products_returns_public_catalogue(client: FlaskClient) -> None:
 
 def test_get_product_returns_detail_or_not_found(client: FlaskClient) -> None:
     """Return a public product representation or the documented missing-product error."""
+    # Persist one record so detail and missing-resource paths share the same route.
     product = Product(
         nom="Keyboard",
         description="Mechanical keyboard",
@@ -82,6 +85,7 @@ def test_create_product_requires_administrator(
     client: FlaskClient, client_headers: dict[str, str]
 ) -> None:
     """Reject missing and non-administrator credentials for product creation."""
+    # Compare missing-token and authenticated-client boundaries on the same write route.
     missing_token_response = client.post("/api/produits", json=PRODUCT_PAYLOAD)
     client_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=client_headers)
 
@@ -95,6 +99,7 @@ def test_create_product_rejects_invalid_payload(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Reject an invalid administrator product payload before persistence."""
+    # Use authorized request with invalid price, then ensure no product was written.
     response = client.post(
         "/api/produits",
         json={**PRODUCT_PAYLOAD, "prix": 0},
@@ -110,6 +115,7 @@ def test_administrator_product_lifecycle(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Create, fully replace, and delete a product with administrator credentials."""
+    # Create through the HTTP API, then retain the returned identifier for PUT and DELETE.
     create_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=admin_headers)
 
     assert create_response.status_code == 201
@@ -121,6 +127,7 @@ def test_administrator_product_lifecycle(
     assert product is not None
     assert created == product.to_dict()
 
+    # Replace the complete product and compare response with persisted state.
     replacement_payload = {
         **PRODUCT_PAYLOAD,
         "nom": "Silent Keyboard",
@@ -139,6 +146,7 @@ def test_administrator_product_lifecycle(
     assert updated.nom == "Silent Keyboard"
     assert updated.quantite_stock == 9
 
+    # Delete the unreferenced record and confirm its database removal.
     delete_response = client.delete(f"/api/produits/{product_id}", headers=admin_headers)
 
     assert delete_response.status_code == 200
@@ -148,6 +156,7 @@ def test_administrator_product_lifecycle(
 
 def _create_order(user: User, status: str | None, products: list[Product]) -> Order:
     """Persist an order with one line per supplied product."""
+    # Flush the header first so every created line receives its required order identifier.
     order = Order(
         utilisateur_id=user.id,
         date_commande=datetime.now(UTC),
@@ -176,6 +185,7 @@ def test_delete_product_removes_complete_pending_order(
     product: Product,
 ) -> None:
     """Delete every pending order line while keeping the other product and its stock."""
+    # Build a pending multi-product order, then capture records that deletion may affect.
     other_product = Product(
         nom="Mouse",
         description="Ergonomic mouse",
@@ -192,6 +202,7 @@ def test_delete_product_removes_complete_pending_order(
     other_product_id = other_product.id
     other_stock = other_product.quantite_stock
 
+    # Deleting one referenced product removes whole pending order, not unrelated catalogue stock.
     response = client.delete(f"/api/produits/{product_id}", headers=admin_headers)
     db.session.expire_all()
 
@@ -212,6 +223,7 @@ def test_delete_product_with_foreign_keys_enabled(
     product: Product,
 ) -> None:
     """Remove pending lines before their product when SQLite enforces foreign keys."""
+    # Enable SQLite foreign keys to exercise deletion ordering under strict constraints.
     order = _create_order(client_user, "en_attente", [product])
     product_id = product.id
     order_id = order.id
@@ -239,6 +251,7 @@ def test_delete_product_preserves_non_pending_history_and_pending_orders(
     status: str | None,
 ) -> None:
     """Reject deletion without changing protected or pending orders and their lines."""
+    # Mix protected history and pending work, then snapshot all affected rows before deletion.
     protected_order = _create_order(client_user, status, [product])
     pending_order = _create_order(client_user, "en_attente", [product])
     product_id = product.id
@@ -248,6 +261,7 @@ def test_delete_product_preserves_non_pending_history_and_pending_orders(
     order_snapshots = [protected_order.to_dict(), pending_order.to_dict()]
     line_snapshots = [protected_order.lignes[0].to_dict(), pending_order.lignes[0].to_dict()]
 
+    # Protected history blocks deletion and keeps both order records unchanged.
     response = client.delete(f"/api/produits/{product_id}", headers=admin_headers)
     db.session.expire_all()
 
@@ -266,6 +280,7 @@ def test_update_product_rejects_incomplete_payload(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Reject an incomplete PUT without changing the persisted product."""
+    # Create a valid product, then omit one required field from full-replacement input.
     create_response = client.post("/api/produits", json=PRODUCT_PAYLOAD, headers=admin_headers)
     created = create_response.get_json()
     assert create_response.status_code == 201
@@ -294,6 +309,7 @@ def test_update_product_rejects_unknown_id(
     client: FlaskClient, admin_headers: dict[str, str]
 ) -> None:
     """Return the documented missing-product response for an unknown product."""
+    # Use an otherwise valid payload so lookup is the only failing path.
     update_response = client.put(
         "/api/produits/999",
         json=PRODUCT_PAYLOAD,

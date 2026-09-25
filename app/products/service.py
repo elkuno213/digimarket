@@ -40,9 +40,11 @@ class ProductData:
 
 def validate_product(payload: object) -> ProductData:
     """Validate a complete product create or replacement payload."""
+    # Reject non-object JSON before reading named product fields.
     if not isinstance(payload, Mapping):
         raise ValidationError("Request body must be a JSON object.")
 
+    # Normalize text and numeric values into the service's trusted data object.
     nom = _validated_text(payload.get("nom"), "nom")
     description = _validated_text(payload.get("description"), "description")
     categorie = _validated_text(payload.get("categorie"), "categorie")
@@ -60,6 +62,7 @@ def validate_product(payload: object) -> ProductData:
 
 def list_products(query: str | None) -> list[Product]:
     """Return products ordered by identifier, optionally filtered by text."""
+    # Start from stable catalogue ordering, then add a literal Unicode-insensitive search.
     statement = db.select(Product).order_by(Product.id)
     search = query.strip().casefold() if query is not None else ""
     if search:
@@ -76,6 +79,7 @@ def list_products(query: str | None) -> list[Product]:
 
 def get_product(product_id: int) -> Product:
     """Return a product by identifier or raise the domain error."""
+    # Reject values SQLite cannot represent before asking the database.
     if not _MIN_SQLITE_INTEGER <= product_id <= _MAX_SQLITE_INTEGER:
         raise ProductNotFoundError("Product not found.")
     product = db.session.get(Product, product_id)
@@ -86,6 +90,7 @@ def get_product(product_id: int) -> Product:
 
 def create_product(data: ProductData) -> Product:
     """Persist a product from validated editable values."""
+    # Construct the model only from trusted service data.
     product = Product(
         nom=data.nom,
         description=data.description,
@@ -94,6 +99,7 @@ def create_product(data: ProductData) -> Product:
         quantite_stock=_validated_stock(data.quantite_stock),
     )
 
+    # Stage then commit the new catalogue record.
     db.session.add(product)
     _commit()
 
@@ -102,6 +108,7 @@ def create_product(data: ProductData) -> Product:
 
 def update_product(product_id: int, data: ProductData) -> Product:
     """Replace a product's editable values with validated data."""
+    # Load the existing record, then replace every editable field as PUT requires.
     product = get_product(product_id)
 
     product.nom = data.nom
@@ -139,11 +146,11 @@ def delete_product(product_id: int) -> None:
         .distinct()
     ).all()
 
-    # TODO(M4): Replace this destructive pending-order cleanup if a schema change becomes allowed.
-    # A product lifecycle policy could remove a product from future catalogue and order selection
-    # while retaining pending orders and all historical rows. Until then, hard deletion must remove
-    # complete pending orders and their lines so the required order_item.produit_id foreign key
-    # stays valid.
+    # TODO(elkuno213): Replace this destructive pending-order cleanup if a schema change becomes
+    # allowed. A product lifecycle policy could remove a product from future catalogue and order
+    # selection while retaining pending orders and all historical rows. Until then, hard deletion
+    # must remove complete pending orders and their lines so the required order_item.produit_id
+    # foreign key stays valid.
     # Delete lines before their order headers because this relationship has no delete cascade.
     for pending_order in pending_orders:
         for line in pending_order.lignes:
@@ -173,6 +180,7 @@ def _validated_text(value: object, key: str) -> str:
 
 def _validated_price(value: object) -> float:
     """Return a finite, strictly positive product price."""
+    # Reject booleans and non-numbers before converting supported JSON numbers.
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValidationError("prix must be a positive number.")
     try:
@@ -186,6 +194,7 @@ def _validated_price(value: object) -> float:
 
 def _validated_stock(value: object) -> int:
     """Return a stock value representable by SQLite's integer type."""
+    # Keep JSON booleans, negative values, and SQLite-overflowing values out of persistence.
     if (
         isinstance(value, bool)
         or not isinstance(value, int)
@@ -199,6 +208,7 @@ def _validated_stock(value: object) -> int:
 def _commit() -> None:
     """Commit the active transaction and restore failed-session usability."""
     try:
+        # Make all staged changes durable as one transaction.
         db.session.commit()
     except Exception:
         # Roll back so this scoped session can serve a later request.

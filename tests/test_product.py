@@ -10,6 +10,7 @@ from app.models.product import Product
 
 def test_persisted_product_serializes_a_sqlite_datetime_as_utc(app: Flask) -> None:
     """Expose every product field and normalize a SQLite-reloaded timestamp."""
+    # Persist an explicit UTC timestamp, then reload its timezone-naive SQLite value.
     product = Product(
         nom="Mechanical Keyboard",
         description="Hot-swappable switches",
@@ -23,6 +24,7 @@ def test_persisted_product_serializes_a_sqlite_datetime_as_utc(app: Flask) -> No
     product_id = product.id
     db.session.remove()
 
+    # Serialize the reloaded product and verify public fields use UTC again.
     persisted_product = db.session.get(Product, product_id)
 
     assert persisted_product is not None

@@ -15,6 +15,7 @@ def test_persisted_order_and_line_serialize_as_public_json(
     app: Flask, client_user: User, product: Product
 ) -> None:
     """Reload an order and line before checking their public fields."""
+    # Build one persisted order header and line with explicit UTC and price values.
     order = Order(
         utilisateur_id=client_user.id,
         date_commande=datetime(2026, 9, 23, 9, 30, tzinfo=UTC),
@@ -35,9 +36,11 @@ def test_persisted_order_and_line_serialize_as_public_json(
     product_id = product.id
     db.session.remove()
 
+    # Reload after removing session state to exercise SQLite serialization behavior.
     persisted_order = db.session.get(Order, order_id)
     persisted_line = db.session.get(OrderItem, line_id)
 
+    # Check public header and line shapes without exposing model-only relationships.
     assert persisted_order is not None
     assert persisted_line is not None
     assert persisted_order.to_dict() == {

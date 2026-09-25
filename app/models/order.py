@@ -20,6 +20,7 @@ class Order(Model):
 
     __tablename__ = "order"
 
+    # Map the order header stored in the supplied schema.
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     utilisateur_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     date_commande: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -30,6 +31,7 @@ class Order(Model):
 
     def to_dict(self) -> dict[str, int | str | None]:
         """Return the public order representation with a UTC timestamp."""
+        # Normalize an optional SQLite datetime before including it in JSON.
         date_commande = self.date_commande
         if date_commande is not None:
             if date_commande.tzinfo is None:

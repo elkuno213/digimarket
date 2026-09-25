@@ -1,0 +1,16 @@
+.venv/
+.env
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+build/
+dist/
+
+# Private author notes are not part of the public project.
+docs/DESIGN.md

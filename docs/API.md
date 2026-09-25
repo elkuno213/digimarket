@@ -1,14 +1,23 @@
 # DigiMarket HTTP API
 
-Base URL: `/api`. Requests and responses are JSON. Send `Authorization: Bearer <access_token>` for
-protected routes. Times are ISO 8601 UTC. Successful `GET`/`PUT`/`PATCH` responses are `200` unless
-shown otherwise. See the [README](../README.md) for local startup and the complete walkthrough.
+## Overview
+
+- Base URL: `/api`.
+- Requests and responses use JSON.
+- Protected routes need `Authorization: Bearer <access_token>`.
+- Dates use ISO 8601 UTC.
+- Successful `GET`, `PUT`, and `PATCH` responses return `200` unless a table says otherwise.
+- See the [README](../README.md) for local startup and the complete walkthrough.
 
 ## Conventions and errors
 
-All endpoint and framework failures use `{"error":"..."}`: bad input `400`, missing/invalid token
-`401`, forbidden role or ownership `403`, absent resource `404`, and stock or state conflict `409`.
-Framework `404`/`405` are JSON; unexpected failures return a non-leaking JSON `500`.
+- All errors use `{"error":"..."}`.
+- `400`: invalid input.
+- `401`: missing or invalid token.
+- `403`: role or ownership is not allowed.
+- `404`: resource does not exist.
+- `409`: stock or order state conflict.
+- Flask `404` and `405` errors also use JSON. Unexpected failures return a safe JSON `500`.
 
 ## Authentication
 
@@ -17,16 +26,19 @@ Framework `404`/`405` are JSON; unexpected failures return a non-leaking JSON `5
 | `POST /api/auth/register` | `email`, `nom`, `mot_de_passe` | `201` user `{id,email,nom,role,date_creation}` | `400`, `409` |
 | `POST /api/auth/login` | `email`, `mot_de_passe` | `{access_token}` | `400`, `401` |
 
-Registration trims and normalizes email, requires a nonblank name and an eight-character password,
-and always creates a `client` (a supplied role cannot elevate access). Login returns the same `401`
-for unknown email and wrong password.
+- Registration trims and normalizes email.
+- A name is required. Password must contain at least eight characters.
+- Registration always creates a `client`; a request cannot assign `admin`.
+- Login uses the same `401` response for an unknown email and a wrong password.
 
 ## Products
 
-A product is `{id,nom,description,categorie,prix,quantite_stock,date_creation}`. Public reads return
-that representation (a list for the catalogue). Product writes require all editable fields:
-`nom`, `description`, and `categorie` are nonblank; `prix` is positive; `quantite_stock` is a
-nonnegative integer. `date_creation` is server generated.
+- A product is `{id,nom,description,categorie,prix,quantite_stock,date_creation}`.
+- Public reads return one product or a catalogue list.
+- Product writes need every editable field.
+- `nom`, `description`, and `categorie` must contain text.
+- `prix` must be positive. `quantite_stock` must be a nonnegative integer.
+- Server creates `date_creation`.
 
 | Route | Access | Request / response | Errors |
 | --- | --- | --- | --- |
@@ -36,16 +48,17 @@ nonnegative integer. `date_creation` is server generated.
 | `PUT /api/produits/{id}` | Admin | Complete replacement; product. | `400`, `401`, `403`, `404` |
 | `DELETE /api/produits/{id}` | Admin | `{message:"Product deleted."}` | `401`, `403`, `404`, `409` |
 
-Deletion preserves non-pending history: a reference in a `validée`, `expédiée`, `annulée`, null, or
-unknown-status order returns `409` unchanged. If references are only `en_attente`, it atomically
-removes each entire pending order and its lines (including other products), then the product. Stock
-does not change; later reads of those orders return `404`.
+- A product in a non-pending order stays as history. Deletion returns `409`.
+- A product used only by `en_attente` orders can be deleted.
+- Deletion removes each affected pending order and all of its lines, then removes the product.
+- Stock does not change. Later reads of removed orders return `404`.
 
 ## Orders
 
-Every order route requires authentication. An order header is
-`{id,utilisateur_id,date_commande,adresse_livraison,statut}`; a line is
-`{id,produit_id,quantite,prix_unitaire}`. `prix_unitaire` is the price snapshot at creation.
+- Every order route needs authentication.
+- An order header is `{id,utilisateur_id,date_commande,adresse_livraison,statut}`.
+- A line is `{id,produit_id,quantite,prix_unitaire}`.
+- `prix_unitaire` is saved when the order is created.
 
 | Route | Access | Request / response | Errors |
 | --- | --- | --- | --- |
@@ -55,7 +68,8 @@ Every order route requires authentication. An order header is
 | `PATCH /api/commandes/{id}` | Admin | Exactly `{statut}`; updated header. | `400`, `401`, `403`, `404`, `409` |
 | `GET /api/commandes/{id}/lignes` | Owner/admin | Saved line list. | `401`, `403`, `404` |
 
-Creation checks stock but neither reserves nor deducts it. There is no cross-session stock locking.
+- Creation checks stock but does not reserve or deduct it.
+- There is no stock lock between sessions.
 
 | Current status | Allowed target | Stock effect |
 | --- | --- | --- |
@@ -65,5 +79,5 @@ Creation checks stock but neither reserves nor deducts it. There is no cross-ses
 | `validée` | `annulée` | Restore every deducted line. |
 | `expédiée`, `annulée` | None | Terminal. |
 
-An invalid transition or insufficient stock returns `409`; the stock-changing operations are
-transactional, so failed validation leaves status and stock unchanged.
+- Invalid state changes and insufficient stock return `409`.
+- A failed stock change leaves status and stock unchanged.

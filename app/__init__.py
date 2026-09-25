@@ -11,6 +11,7 @@ from app import extensions
 from app.auth.authorization import register_jwt_error_handlers
 from app.auth.routes import auth_blueprint
 from app.config import Config
+from app.onboarding import register_onboarding_command
 from app.orders.routes import orders_blueprint
 from app.products.routes import products_blueprint
 
@@ -33,6 +34,7 @@ def create_app(config_override: Mapping[str, Any] | None = None) -> Flask:
 
     # Register extensions, blueprints, and error handlers after the app has loaded its settings.
     register_extensions(app)
+    register_onboarding_command(app)
     register_blueprints(app)
     register_error_handlers(app)
 

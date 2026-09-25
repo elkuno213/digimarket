@@ -9,7 +9,6 @@ from flask.testing import FlaskClient
 from flask_jwt_extended import decode_token
 from werkzeug.security import check_password_hash
 
-from app.auth import service as auth_service
 from app.extensions import db
 from app.models.user import User
 
@@ -182,16 +181,9 @@ def test_register_rejects_a_duplicate_normalized_email(client: FlaskClient) -> N
     assert isinstance(second_response.get_json()["error"], str)
 
 
-def test_register_recovers_after_a_unique_constraint_race(
-    client: FlaskClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Recover the SQLAlchemy session after a database uniqueness race.
-
-    The test simulates two requests passing the application-level duplicate check.
-    The database remains the authoritative protection, and rollback must leave the
-    session usable for the next request.
-    """
-    # Step 1: persist Alice exactly as the first of two concurrent requests would do.
+def test_register_recovers_after_a_duplicate_commit(client: FlaskClient) -> None:
+    """Recover the SQLAlchemy session after the database rejects a duplicate email."""
+    # Persist Alice so the next insert reaches SQLite's unique email constraint at commit time.
     first_response = client.post(
         "/api/auth/register",
         json={
@@ -200,13 +192,7 @@ def test_register_recovers_after_a_unique_constraint_race(
             "mot_de_passe": "eight-char",
         },
     )
-    # Step 2: replace the real lookup only for this test. register_user() will now receive None
-    # from find_user_by_email(), although Alice is already in the database.
-    # This simulates a second request that performed its pre-check before Alice committed.
-    monkeypatch.setattr(auth_service, "find_user_by_email", lambda _email: None)
-
-    # Step 3: the stale pre-check allows this duplicate insert attempt to reach commit().
-    # SQLite's unique email constraint—not the mocked Python pre-check—must reject it.
+    # The duplicate insert fails at commit; _persist_user() must roll back its failed session.
     raced_response = client.post(
         "/api/auth/register",
         json={
@@ -215,8 +201,7 @@ def test_register_recovers_after_a_unique_constraint_race(
             "mot_de_passe": "eight-char",
         },
     )
-    # Step 4: after the failed commit, a rollback must make the session usable again.
-    # Registering Bob is the observable proof that the session was repaired.
+    # Registering Bob proves that rollback made the SQLAlchemy session usable again.
     following_response = client.post(
         "/api/auth/register",
         json={
@@ -226,7 +211,7 @@ def test_register_recovers_after_a_unique_constraint_race(
         },
     )
 
-    # First request succeeds; the simulated concurrent duplicate becomes a public conflict.
+    # The duplicate becomes a public conflict and the following request still succeeds.
     assert first_response.status_code == 201
     assert raced_response.status_code == 409
     assert isinstance(raced_response.get_json(), Mapping)

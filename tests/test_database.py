@@ -8,6 +8,7 @@ from conftest import TEST_JWT_SECRET
 from flask import Flask
 from pytest import MonkeyPatch
 from sqlalchemy import func, inspect, text
+from werkzeug.security import check_password_hash
 
 from app import create_app
 from app.auth.service import onboard_administrator
@@ -75,12 +76,17 @@ def test_temporary_database_is_connected_independently(
     assert database_path.exists()
 
 
+def test_sqlite_connections_enforce_foreign_keys(app: Flask) -> None:
+    """Every application-managed SQLite connection enforces declared relationships."""
+    assert db.session.scalar(text("PRAGMA foreign_keys")) == 1
+
+
 def test_supplied_database_is_readable_empty_schema_without_file_changes(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """The tracked blank database supports read-only schema inspection."""
     # Snapshot the supplied file before read-only schema and empty-table checks.
-    database_path = _DATABASE_DIRECTORY / "digimarket.db"
+    database_path = _DATABASE_DIRECTORY / "digimarket-empty.db"
     before_hash = sha256(database_path.read_bytes()).digest()
     sidecar_paths = _sidecar_paths(database_path)
     assert not any(path.exists() for path in sidecar_paths)
@@ -107,12 +113,47 @@ def test_supplied_database_is_readable_empty_schema_without_file_changes(
     assert not any(path.exists() for path in sidecar_paths)
 
 
+def test_supplied_sample_database_contains_coherent_demo_data(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The tracked sample database provides usable records for every required entity."""
+    database_path = _DATABASE_DIRECTORY / "digimarket.db"
+    before_hash = sha256(database_path.read_bytes()).digest()
+    sidecar_paths = _sidecar_paths(database_path)
+    assert not any(path.exists() for path in sidecar_paths)
+    app = _create_app_for_database(monkeypatch, database_path, read_only=True)
+
+    with app.app_context():
+        assert db.session.execute(text("PRAGMA foreign_key_check")).all() == []
+        administrator = db.session.scalar(
+            db.select(User).where(User.email == "admin@digimarket.test")
+        )
+        client = db.session.scalar(
+            db.select(User).where(User.email == "client.one@digimarket.test")
+        )
+        assert administrator is not None
+        assert client is not None
+
+        sample_order = db.session.scalar(db.select(Order).where(Order.utilisateur_id == client.id))
+        assert sample_order is not None
+        assert administrator.role == "admin"
+        assert client.role == "client"
+        assert check_password_hash(administrator.password_hash, "admin-demo-password")
+        assert check_password_hash(client.password_hash, "client-one-password")
+        assert _count(Product) >= 2
+        assert _count(OrderItem) >= 1
+        assert sample_order.lignes
+
+    assert sha256(database_path.read_bytes()).digest() == before_hash
+    assert not any(path.exists() for path in sidecar_paths)
+
+
 def test_onboarding_a_copied_empty_schema_keeps_the_tracked_fixture_unchanged(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Onboarding writes only to a copied blank database, never the tracked schema."""
     # Copy the empty schema, then direct onboarding at the disposable copy.
-    source_path = _DATABASE_DIRECTORY / "digimarket.db"
+    source_path = _DATABASE_DIRECTORY / "digimarket-empty.db"
     before_hash = sha256(source_path.read_bytes()).digest()
     database_path = tmp_path / "onboarded.db"
     copyfile(source_path, database_path)

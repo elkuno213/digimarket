@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import pytest
 from flask.testing import FlaskClient
-from sqlalchemy import text
 
 from app.extensions import db
 from app.models.order import Order
@@ -223,16 +222,11 @@ def test_delete_product_with_foreign_keys_enabled(
     product: Product,
 ) -> None:
     """Remove pending lines before their product when SQLite enforces foreign keys."""
-    # Enable SQLite foreign keys to exercise deletion ordering under strict constraints.
+    # Application connections enforce foreign keys, exercising strict deletion ordering.
     order = _create_order(client_user, "en_attente", [product])
     product_id = product.id
     order_id = order.id
     line_id = order.lignes[0].id
-    db.session.remove()
-    db.session.execute(text("PRAGMA foreign_keys = ON"))
-    assert db.session.scalar(text("PRAGMA foreign_keys")) == 1
-    db.session.remove()
-
     response = client.delete(f"/api/produits/{product_id}", headers=admin_headers)
     db.session.expire_all()
 

@@ -2,8 +2,19 @@
 
 DigiMarket is an API-only Flask e-commerce project. It implements configuration, JWT
 authentication, public catalogue browsing, administrator product management, and client order
-management. The HTTP contract is in [API.md](docs/API.md); this guide starts with an empty database
-and exercises the complete required flow.
+management. The HTTP contract is in [API.md](docs/API.md); this guide starts from the supplied empty
+database and exercises the complete required flow.
+
+## Included databases
+
+- `digimarket-empty.db` contains only the initialized schema. Copy this file for a clean setup or
+  the walkthrough below.
+- `digimarket.db` contains representative sample users, products, an order, and an order line. Its
+  local demonstration accounts are `admin@digimarket.test` / `admin-demo-password` and
+  `client.one@digimarket.test` / `client-one-password`.
+
+Both files are project fixtures. Point `DATABASE_PATH` at a disposable copy when running the API.
+SQLite foreign-key enforcement is enabled automatically for every application connection.
 
 ## Start locally
 
@@ -22,7 +33,7 @@ ADMIN_PASSWORD=<replace-with-an-8-character-minimum-password>
 Then copy the empty database to the writable location named in `.env`:
 
 ```bash
-cp digimarket.db <tmp-database-file-path>
+cp digimarket-empty.db <tmp-database-file-path>
 ```
 
 Choose one dependency setup, then create the first administrator and start Flask.
@@ -83,7 +94,7 @@ CLIENT_TWO_PASSWORD=client-two-password
 Start the server in one terminal:
 
 ```bash
-cp digimarket.db /tmp/demo.db            # Expected: a new empty demo database.
+cp digimarket-empty.db /tmp/demo.db      # Expected: a new empty demo database.
 uv run flask onboard                     # Expected: Administrator onboarded: admin@digimarket.test
 uv run flask run --debug                 # Expected: Running on http://127.0.0.1:5000
 ```
